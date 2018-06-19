@@ -158,9 +158,14 @@ class KVSessionInterface(SessionInterface):
                         raise KeyError
 
                     # retrieve from store
-                    s = self.session_class(self.serialization_method.loads(
-                        current_app.kvsession_store.get(sid_s)))
-                    s.sid_s = sid_s
+                    try:
+                        s = self.session_class(self.serialization_method.loads(
+                                current_app.kvsession_store.get(sid_s)))
+                        s.sid_s = sid_s
+                    except:
+                        logging.getLogger("KVSession").debug("Session not found in store")
+                        raise KeyError
+
                     logging.getLogger("KVSession").debug("Session loaded")
                     if "t_expire" in s:
                         if refresh and s.permanent and datetime.now() > s["t_expire"]:
@@ -172,6 +177,8 @@ class KVSessionInterface(SessionInterface):
                     # session in the backend.
                     logging.getLogger("KVSession").debug("No valid session")
                     pass
+            else:
+                logging.getLogger("KVSession").debug("No session cookie found")
 
             if s is None:
                 s = self.session_class()  # create an empty session
@@ -272,6 +279,7 @@ class KVSessionExtension(object):
                 # remove if expired
                 if sid.has_expired(app.permanent_session_lifetime, now):
                     app.kvsession_store.delete(key)
+        logging.getLogger("KVSession").debug("Session store cleaned up")
 
     def init_app(self, app, session_kvstore=None):
         """Initialize application and KVSession.
