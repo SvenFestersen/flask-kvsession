@@ -9,6 +9,7 @@ try:
 except ImportError:
     import pickle
 from datetime import datetime
+import logging
 from random import SystemRandom
 import re
 
@@ -102,6 +103,7 @@ class KVSession(CallbackDict, SessionMixin):
 
         self.modified = False
         self.new = False
+        logging.getLogger("KVSession").debug("Session destroyed")
 
     def regenerate(self):
         """Generate a new session id for this session.
@@ -122,6 +124,7 @@ class KVSession(CallbackDict, SessionMixin):
             self.modified = True
 
             # save_session() will take care of saving the session now
+            logging.getLogger("KVSession").debug("Session regenerated")
 
 
 class KVSessionInterface(SessionInterface):
@@ -149,20 +152,24 @@ class KVSessionInterface(SessionInterface):
                         # we reach this point if a "non-permanent" session has
                         # expired, but is made permanent. silently ignore the
                         # error with a new session
+                        logging.getLogger("KVSession").debug("Session expired")
                         raise KeyError
 
                     # retrieve from store
                     s = self.session_class(self.serialization_method.loads(
                         current_app.kvsession_store.get(sid_s)))
                     s.sid_s = sid_s
+                    logging.getLogger("KVSession").debug("Session loaded")
                 except (BadSignature, KeyError):
                     # either the cookie was manipulated or we did not find the
                     # session in the backend.
+                    logging.getLogger("KVSession").debug("No valid session")
                     pass
 
             if s is None:
                 s = self.session_class()  # create an empty session
                 s.new = True
+                logging.getLogger("KVSession").debug("Empty session created")
 
             return s
 
@@ -186,6 +193,8 @@ class KVSessionInterface(SessionInterface):
                 store.put(session.sid_s, data, ttl)
             else:
                 store.put(session.sid_s, data)
+
+            logging.getLogger("KVSession").debug("Session saved")
 
             session.new = False
             session.modified = False
