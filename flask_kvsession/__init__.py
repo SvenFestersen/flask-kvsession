@@ -8,7 +8,7 @@ try:
     import cPickle as pickle
 except ImportError:
     import pickle
-from datetime import datetime
+from datetime import datetime, timedelta
 from random import SystemRandom
 import re
 
@@ -85,6 +85,8 @@ class KVSession(CallbackDict, SessionMixin):
             d.modified = True
 
         CallbackDict.__init__(self, initial, _on_update)
+        if not initial:
+            self["t_expires"] = datetime.now() + timedelta(seconds=current_app.config["PERMANENT_SESSION_LIFETIME"])
 
     def destroy(self):
         """Destroys a session completely, by deleting all keys and removing it
@@ -145,7 +147,9 @@ class KVSessionInterface(SessionInterface):
                         session_cookie).decode('ascii')
                     sid = SessionID.unserialize(sid_s)
 
-                    if sid.has_expired(app.permanent_session_lifetime):
+                    refresh = app.config["SESSION_REFRESH_EACH_REQUEST"]
+
+                    if not refresh and sid.has_expired(app.permanent_session_lifetime):
                         # we reach this point if a "non-permanent" session has
                         # expired, but is made permanent. silently ignore the
                         # error with a new session
@@ -155,6 +159,11 @@ class KVSessionInterface(SessionInterface):
                     s = self.session_class(self.serialization_method.loads(
                         current_app.kvsession_store.get(sid_s)))
                     s.sid_s = sid_s
+
+                    if refresh and datetime.now() > s["t_expires"]:
+                        # the session has expired
+                        raise KeyError
+
                 except (BadSignature, KeyError):
                     # either the cookie was manipulated or we did not find the
                     # session in the backend.
@@ -175,6 +184,11 @@ class KVSessionInterface(SessionInterface):
                 session.sid_s = SessionID(
                     current_app.config['SESSION_RANDOM_SOURCE'].getrandbits(
                         app.config['SESSION_KEY_BITS'])).serialize()
+
+            # refresh the lifetime of a permanent session
+            refresh = app.config["SESSION_REFRESH_EACH_REQUEST"] and session.permanent
+            if refresh:
+                session["t_expires"] = self.get_expiration_time(app, session)
 
             # save the session, now its no longer new (or modified)
             data = self.serialization_method.dumps(dict(session))
